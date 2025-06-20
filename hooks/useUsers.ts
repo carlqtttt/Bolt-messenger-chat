@@ -1,33 +1,35 @@
 import { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, where } from 'firebase/firestore';
-import { db } from '@/config/firebase';
 import { User } from '@/types';
+import StorageService from '@/services/StorageService';
 
 export function useUsers(currentUserId?: string) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const q = currentUserId 
-      ? query(collection(db, 'users'), where('id', '!=', currentUserId))
-      : query(collection(db, 'users'));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const usersData: User[] = [];
-      snapshot.forEach((doc) => {
-        usersData.push({
-          id: doc.id,
-          ...doc.data(),
-          lastSeen: doc.data().lastSeen?.toDate() || new Date(),
-          createdAt: doc.data().createdAt?.toDate() || new Date()
-        } as User);
-      });
-      setUsers(usersData);
-      setLoading(false);
-    });
-
-    return unsubscribe;
+    loadUsers();
+    
+    // Set up polling for real-time updates
+    const interval = setInterval(loadUsers, 5000);
+    
+    return () => clearInterval(interval);
   }, [currentUserId]);
+
+  const loadUsers = async () => {
+    try {
+      const allUsers = await StorageService.getUsers();
+      // Filter out current user
+      const filteredUsers = currentUserId 
+        ? allUsers.filter(user => user.id !== currentUserId)
+        : allUsers;
+      
+      setUsers(filteredUsers);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading users:', error);
+      setLoading(false);
+    }
+  };
 
   return { users, loading };
 }
